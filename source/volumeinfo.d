@@ -194,7 +194,13 @@ private:
  * Get mountpoint where the provided path resides on.
  */
 @trusted string volumePath(string path)
-{
+out(result) {
+    import std.path : isAbsolute;
+    if (result.length) {
+        assert(result.isAbsolute);
+    }
+}
+body {
     if (path.length == 0)
         return string.init;
     import std.path : absolutePath;
