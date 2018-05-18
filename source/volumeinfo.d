@@ -9,7 +9,14 @@
  */
 module volumeinfo;
 
-import std.typecons : RefCounted;
+import std.typecons : RefCounted, BitFlags;
+
+version(Windows)
+{
+    import core.sys.windows.windows;
+    import std.utf : toUTF16z, toUTF8;
+    import core.stdc.wchar_ : wcslen;
+}
 
 version(OSX) {} else version(Posix)
 {
@@ -230,19 +237,38 @@ body {
             current = parent;
         }
         return current;
+    } else version(Windows) {
+        const(wchar)* wpath = path.toUTF16z;
+        wchar[MAX_PATH+1] buf;
+        if (GetVolumePathName(wpath, buf.ptr, buf.length)) {
+            return buf[0..wcslen(buf.ptr)].toUTF8;
+        }
+        return string.init;
     } else {
         return string.init;
     }
 }
 
-version(Posix) private struct VolumeInfoImpl
+private struct VolumeInfoImpl
 {
+    enum Retrieved : ushort {
+        Type = 1 << 0,
+        Device = 1 << 1,
+        Label = 1 << 2,
+        BytesAvailable = 1 << 3,
+        BytesTotal = 1 << 4,
+        BytesFree = 1 << 5,
+        ReadOnly = 1 << 6,
+        Ready = 1 << 7,
+        Valid = 1 << 8,
+    }
+
     @safe this(string path) nothrow {
         import std.path : isAbsolute;
         assert(path.isAbsolute);
         this.path = path;
     }
-    @safe this(string mountPoint, string device, string type) nothrow {
+    version(Posix) @safe this(string mountPoint, string device, string type) nothrow {
         path = mountPoint;
         _device = device;
         _type = type;
@@ -261,32 +287,36 @@ version(Posix) private struct VolumeInfoImpl
     }
     version(CRuntime_Glibc) {
         @safe @property string label() nothrow {
-            if (!_labelRetrieved) {
-                _label = retrieveLabel(device);
-                _labelRetrieved = true;
-            }
+            retrieve(Retrieved.Label);
             return _label;
         }
         string _label;
-        bool _labelRetrieved;
+    } else version(Windows) {
+        @safe @property string label() nothrow {
+            retrieve(Retrieved.Label);
+            return _label;
+        }
+        string _label;
     } else {
         enum label = string.init;
     }
 
-    bool _volumeInfoRetrieved;
-    bool _deviceAndTypeRetrieved;
+    BitFlags!Retrieved retrieved;
     bool _readOnly;
+    bool _ready;
+    bool _valid;
 
     string path;
     string _device;
     string _type;
 
     @safe @property string device() nothrow {
-        retrieveDeviceAndType();
+        version(Posix) retrieveDeviceAndType();
         return _device;
     }
     @safe @property string type() nothrow {
-        retrieveDeviceAndType();
+        version(Posix) retrieveDeviceAndType();
+        retrieve(Retrieved.Type);
         return _type;
     }
 
@@ -295,30 +325,34 @@ version(Posix) private struct VolumeInfoImpl
     long _bytesAvailable = -1;
 
     @safe @property long bytesTotal() nothrow {
-        retrieveVolumeInfo();
+        retrieve(Retrieved.BytesTotal);
         return _bytesTotal;
     }
     @safe @property long bytesFree() nothrow {
-        retrieveVolumeInfo();
+        retrieve(Retrieved.BytesFree);
         return _bytesFree;
     }
     @safe @property long bytesAvailable() nothrow {
-        retrieveVolumeInfo();
+        retrieve(Retrieved.BytesAvailable);
         return _bytesAvailable;
     }
     @safe @property bool readOnly() nothrow {
-        retrieveVolumeInfo();
+        retrieve(Retrieved.ReadOnly);
         return _readOnly;
     }
+    @safe @property bool isValid() nothrow {
+        retrieve(Retrieved.Valid);
+        return path.length && _valid;
+    }
+    @safe @property bool ready() nothrow {
+        retrieve(Retrieved.Ready);
+        return path.length && _ready;
+    }
 
-    @trusted void retrieveVolumeInfo() nothrow {
+    version(Posix) @trusted void retrieveVolumeInfo() nothrow {
         import std.string : toStringz;
         import std.exception : assumeWontThrow;
         import core.sys.posix.sys.statvfs;
-
-        if (_volumeInfoRetrieved || path.length == 0)
-            return;
-        _volumeInfoRetrieved = true;
 
         statvfs_t buf;
         if (assumeWontThrow(statvfs(toStringz(path), &buf)) == 0) {
@@ -332,13 +366,11 @@ version(Posix) private struct VolumeInfoImpl
                 _bytesAvailable = buf.f_frsize * buf.f_bavail;
             }
             _readOnly = (buf.f_flag & FFlag.ST_RDONLY) != 0;
+            _ready = _valid = true;
         }
     }
 
-    @trusted void retrieveDeviceAndType() nothrow {
-        if (_deviceAndTypeRetrieved || path.length == 0)
-            return;
-        _deviceAndTypeRetrieved = true;
+    version(Posix) @trusted void retrieveDeviceAndType() nothrow {
         version(CRuntime_Glibc)
         {
             // we need to loop through all mountpoints again to find a type by path. Is there a faster way to get file system type?
@@ -384,6 +416,80 @@ version(Posix) private struct VolumeInfoImpl
             }
         }
     }
+
+    version(Windows) @trusted void retrieveVolumeInfo() nothrow {
+        const oldmode = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+
+        import std.exception : collectException;
+        const(wchar)* wpath;
+        if (collectException(path.toUTF16z, wpath) !is null)
+            return;
+        wchar[MAX_PATH+1] name;
+        wchar[MAX_PATH+1] type;
+        DWORD flags = 0;
+        const bool result = GetVolumeInformation(wpath,
+                                                   name.ptr, name.length,
+                                                   null, null,
+                                                   &flags,
+                                                   type.ptr, type.length) != 0;
+        if (!result) {
+            _ready = false;
+            _valid = GetLastError() == ERROR_NOT_READY;
+        } else {
+            try {
+                _type = type[0..wcslen(type.ptr)].toUTF8;
+                _label = name[0..wcslen(name.ptr)].toUTF8;
+            } catch(Exception e) {
+            }
+
+            _ready = true;
+            _valid = true;
+            _readOnly = (flags & FILE_READ_ONLY_VOLUME) != 0;
+        }
+
+        SetErrorMode(oldmode);
+    }
+
+    version(Windows) @trusted void retrieveSizes() nothrow
+    {
+        const oldmode = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+
+        import std.exception : collectException;
+        const(wchar)* wpath;
+        if (collectException(path.toUTF16z, wpath) !is null)
+            return;
+        _ready = GetDiskFreeSpaceEx(wpath,
+                                     cast(PULARGE_INTEGER)(&_bytesAvailable),
+                                     cast(PULARGE_INTEGER)(&_bytesTotal),
+                                     cast(PULARGE_INTEGER)(&_bytesFree)) != 0;
+
+        SetErrorMode(oldmode);
+    }
+    
+    @trusted void retrieve(Retrieved r) nothrow {
+        if ((r & retrieved) == BitFlags!Retrieved(r) || !path.length)
+            return;
+        with(Retrieved)
+        {
+            retrieved |= r;
+            version(Windows) {
+                if (r & (Ready | Valid | ReadOnly | Label | Type))
+                    retrieveVolumeInfo();
+                if (r & (BytesAvailable | BytesFree | BytesTotal))
+                    retrieveSizes();
+            }
+            version(Posix) {
+                if (r & (Ready | Valid | ReadOnly | BytesAvailable | BytesFree | BytesTotal))
+                    retrieveVolumeInfo();
+                if (r & (Type | Device))
+                    retrieveDeviceAndType();
+            }
+            version(CRuntime_Glibc) {
+                if (r & Label)
+                    _label = retrieveLabel(device);
+            }
+        }   
+    }
 }
 
 /**
@@ -408,7 +514,7 @@ struct VolumeInfo
         return impl.device;
     }
     /**
-     * File system type, e.g. ext4.
+     * File system type, e.g. ext4 on Linux or NTFS on Windows.
      */
     @trusted @property string type() nothrow {
         return impl.type;
@@ -535,13 +641,12 @@ VolumeInfo[] mountedVolumes() {
     }
 
     version (Windows) {
-        import core.sys.windows.windows;
         const uint mask = GetLogicalDrives();
         foreach(int i; 0 .. 26) {
             if (mask & (1 << i)) {
                 const char letter = cast(char)('A' + i);
                 string path = letter ~ ":\\";
-                res ~= VolumeInfo(path);
+                res ~= VolumeInfo(VolumeInfoImpl(path));
             }
         }
     }

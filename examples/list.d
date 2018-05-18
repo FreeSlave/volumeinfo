@@ -10,7 +10,7 @@ import volumeinfo;
 string formatVolume(VolumeInfo volume)
 {
     enum toMB = 1024*1024;
-    return format("%s (%s), %s MB free out of %s MB", volume.path, volume.type, volume.bytesAvailable/toMB, volume.bytesTotal/toMB);
+    return format("%s (%s, %s), %s MB free out of %s MB", volume.path, volume.type, volume.label, volume.bytesAvailable/toMB, volume.bytesTotal/toMB);
 }
 
 void main(string[] args)
