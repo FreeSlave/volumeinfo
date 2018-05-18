@@ -108,13 +108,36 @@ private:
         char *hasmntopt(const mntent *mnt, const char *opt);
     }
 
-    @safe string unescapeLabel(string label)
+    @safe string decodeLabel(string label) nothrow pure
     {
         import std.string : replace;
-        return label.replace("\\x20", " ")
-                    .replace("\\x9", "\t")
-                    .replace("\\x5c", "\\")
-                    .replace("\\xA", "\n");
+        import std.conv : to;
+        string res;
+        res.reserve(label.length);
+        for(size_t i = 0; i<label.length; ++i) {
+            if (label[i] == '\\' && label.length > i+4 && label[i+1] == 'x') {
+                try {
+                    const code = to!ubyte(label[i+2..i+4], 16);
+                    if (code >= 0x20 && code < 0x80) {
+                        res ~= cast(char)code;
+                        i+=3;
+                        continue;
+                    }
+                } catch(Exception e) {
+
+                }
+            }
+            res ~= label[i];
+        }
+        return res;
+    }
+
+    unittest
+    {
+        assert(decodeLabel("Label\\x20space") == "Label space");
+        assert(decodeLabel("Label\\x5Cslash") == "Label\\slash");
+        assert(decodeLabel("Label") == "Label");
+        assert(decodeLabel("\\xNO") == "\\xNO");
     }
 
     @trusted string retrieveLabel(string fsName) nothrow {
@@ -130,7 +153,7 @@ private:
                     if (entry.isSymlink && collectException(entry.readLink, resolvedLink) is null) {
                         auto normalized = buildNormalizedPath(byLabel, resolvedLink);
                         if (normalized == fsName)
-                            return entry.name.baseName.unescapeLabel();
+                            return entry.name.baseName.decodeLabel();
                     }
                 }
             } catch(Exception e) {
