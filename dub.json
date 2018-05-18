@@ -1,0 +1,11 @@
+{
+	"name": "volumeinfo",
+	"authors": [
+		"Roman Chistokhodov"
+	],
+	"description": "Getting currently mounted volumes",
+	"copyright": "Copyright © 2018, Roman Chistokhodov",
+	"license": "BSL-1.0",
+    "targetPath" : "lib",
+    "targetType" : "library"
+}
