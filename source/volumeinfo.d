@@ -272,9 +272,10 @@ private struct VolumeInfoImpl
         path = mountPoint;
         _device = device;
         _type = type;
-        if (device.length && type.length) {
-            _deviceAndTypeRetrieved = true;
-        }
+        if (device.length)
+            retrieved |= Retrieved.Device;
+        if (type.length)
+            retrieved |= Retrieved.Type;
     }
     version(FreeBSD) @safe this(string mountPoint, string device, string type, const(statfs_t)* buf) nothrow {
         assert(buf);
@@ -311,11 +312,9 @@ private struct VolumeInfoImpl
     string _type;
 
     @safe @property string device() nothrow {
-        version(Posix) retrieveDeviceAndType();
         return _device;
     }
     @safe @property string type() nothrow {
-        version(Posix) retrieveDeviceAndType();
         retrieve(Retrieved.Type);
         return _type;
     }
@@ -341,12 +340,15 @@ private struct VolumeInfoImpl
         return _readOnly;
     }
     @safe @property bool isValid() nothrow {
-        retrieve(Retrieved.Valid);
-        return path.length && _valid;
+        import std.file : exists;
+        return path.length && path.exists && _valid;
     }
     @safe @property bool ready() nothrow {
         retrieve(Retrieved.Ready);
         return path.length && _ready;
+    }
+    @safe void refresh() nothrow {
+        retrieved = BitFlags!Retrieved();
     }
 
     version(Posix) @trusted void retrieveVolumeInfo() nothrow {
@@ -465,7 +467,7 @@ private struct VolumeInfoImpl
 
         SetErrorMode(oldmode);
     }
-    
+
     @trusted void retrieve(Retrieved r) nothrow {
         if ((r & retrieved) == BitFlags!Retrieved(r) || !path.length)
             return;
@@ -488,12 +490,13 @@ private struct VolumeInfoImpl
                 if (r & Label)
                     _label = retrieveLabel(device);
             }
-        }   
+        }
     }
 }
 
 /**
  * Represents a filesystem volume. Provides information about mountpoint, filesystem type and storage size.
+ * All values except for $(D VolumeInfo.path) are retrieved on the first demand and then getting cached. Use $(D VolumeInfo.refresh) to refresh info.
  */
 struct VolumeInfo
 {
@@ -509,7 +512,7 @@ struct VolumeInfo
     @trusted @property string path() nothrow {
         return impl.path;
     }
-    /// Device string, e.g. /dev/sda.
+    /// Device string, e.g. /dev/sda. Currently implemented only on Linux and FreeBSD.
     @trusted @property string device() nothrow {
         return impl.device;
     }
@@ -558,6 +561,18 @@ struct VolumeInfo
         import std.format;
         return format("VolumeInfo(%s, %s)", path, type);
     }
+    /// Whether the filesystem is ready for work.
+    @trusted @property bool ready() nothrow {
+        return impl.ready;
+    }
+    /// Whether the object is valid (specified path exists).
+    @trusted @property bool isValid() nothrow {
+        return impl.isValid;
+    }
+    /// Refresh cached info.
+    @trusted void refresh() nothrow {
+        return impl.refresh();
+    }
 private:
     this(VolumeInfoImpl impl) {
         this.impl = RefCounted!VolumeInfoImpl(impl);
@@ -575,6 +590,8 @@ unittest
     assert(info.bytesAvailable < 0);
     assert(info.bytesFree < 0);
     assert(!info.readOnly);
+    assert(!info.ready);
+    assert(!info.isValid);
 }
 
 /**
