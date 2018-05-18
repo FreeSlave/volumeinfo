@@ -468,26 +468,32 @@ private struct VolumeInfoImpl
         SetErrorMode(oldmode);
     }
 
-    @trusted void retrieve(Retrieved r) nothrow {
-        if ((r & retrieved) == BitFlags!Retrieved(r) || !path.length)
+    @trusted void retrieve(Retrieved requested) nothrow {
+        if ((requested & retrieved) == BitFlags!Retrieved(requested) || !path.length)
             return;
         with(Retrieved)
         {
-            retrieved |= r;
+            bool checkAndSet(BitFlags!Retrieved flagSet) {
+                if (requested & flagSet) {
+                    retrieved |= flagSet;
+                    return true;
+                }
+                return false;
+            }
             version(Windows) {
-                if (r & (Ready | Valid | ReadOnly | Label | Type))
+                if (checkAndSet(BitFlags!Retrieved() | Ready | Valid | ReadOnly | Label | Type))
                     retrieveVolumeInfo();
-                if (r & (BytesAvailable | BytesFree | BytesTotal))
+                if (checkAndSet(BitFlags!Retrieved() | BytesAvailable | BytesFree | BytesTotal))
                     retrieveSizes();
             }
             version(Posix) {
-                if (r & (Ready | Valid | ReadOnly | BytesAvailable | BytesFree | BytesTotal))
+                if (checkAndSet(BitFlags!Retrieved() | Ready | Valid | ReadOnly | BytesAvailable | BytesFree | BytesTotal))
                     retrieveVolumeInfo();
-                if (r & (Type | Device))
+                if (checkAndSet(BitFlags!Retrieved() | Type | Device))
                     retrieveDeviceAndType();
             }
             version(CRuntime_Glibc) {
-                if (r & Label)
+                if (checkAndSet(BitFlags!Retrieved() | Label))
                     _label = retrieveLabel(device);
             }
         }
