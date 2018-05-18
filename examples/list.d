@@ -15,12 +15,6 @@ string formatVolume(VolumeInfo volume)
 
 void main(string[] args)
 {
-    auto volumes = mountedVolumes();
-    writeln("Mounted volumes: ");
-    foreach(VolumeInfo volume; volumes) {
-        writeln(formatVolume(volume));
-    }
-
     if (args.length > 1) {
         writeln("Volumes for the passed paths: ");
         foreach(arg; args[1..$]) {
@@ -29,6 +23,12 @@ void main(string[] args)
             } catch(Exception e) {
                 stderr.writefln("Error getting volume information: %s", e.msg);
             }
+        }
+    } else {
+        auto volumes = mountedVolumes();
+        writeln("Mounted volumes: ");
+        foreach(VolumeInfo volume; volumes) {
+            writeln(formatVolume(volume));
         }
     }
 }
