@@ -5,6 +5,8 @@ The information includes total and free size, filesystem type and display name.
 
 Inspired by QStorageInfo from Qt.
 
+[![Build Status](https://travis-ci.org/FreeSlave/volumeinfo.svg?branch=master)](https://travis-ci.org/FreeSlave/volumeinfo)
+
 ## [Example](examples/list.d)
 
 Print mounted volumes:
