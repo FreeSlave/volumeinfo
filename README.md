@@ -9,6 +9,10 @@ Inspired by QStorageInfo from Qt.
 [![Windows Build Status](https://ci.appveyor.com/api/projects/status/github/FreeSlave/volumeinfo?branch=master&svg=true)](https://ci.appveyor.com/project/FreeSlave/volumeinfo)
 [![Coverage Status](https://coveralls.io/repos/FreeSlave/volumeinfo/badge.svg?branch=master&service=github)](https://coveralls.io/github/FreeSlave/volumeinfo?branch=master)
 
+## Supported platforms
+
+Windows, GNU/Linux and propably FreeBSD (code was written, but was not tested in its current form).
+
 ## [Example](examples/list.d)
 
 Print mounted volumes:
