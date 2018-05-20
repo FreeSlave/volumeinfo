@@ -270,8 +270,10 @@ private struct VolumeInfoImpl
     }
     version(Posix) @safe this(string mountPoint, string device, string type) nothrow {
         path = mountPoint;
-        this.device = device;
-        this.type = type;
+        if (device.length)
+            this.device = device;
+        if (type.length)
+            this.type = type;
     }
     version(FreeBSD) @safe this(string mountPoint, string device, string type, ref const(statfs_t) buf) nothrow {
         this(mountPoint, device, type);
@@ -421,8 +423,8 @@ private struct VolumeInfoImpl
                     const(char)[] device, mountDir, type;
                     if (parseMountsLine(line, device, mountDir, type)) {
                         if (mountDir == path) {
-                            device = device.idup;
-                            type = type.idup;
+                            this.device = device.idup;
+                            this.type = type.idup;
                             break;
                         }
                     }
@@ -438,8 +440,8 @@ private struct VolumeInfoImpl
                     const(char)[] device, mountDir, type;
                     parseMntent(ent, device, mountDir, type);
                     if (mountDir == path) {
-                        device = device.idup;
-                        type = type.idup;
+                        this.device = device.idup;
+                        this.type = type.idup;
                         break;
                     }
                 }
@@ -452,8 +454,8 @@ private struct VolumeInfoImpl
             if (statfs(toStringz(path), &buf) == 0) {
                 const(char)[] device, mountDir, type;
                 parseStatfs(buf, device, mountDir, type);
-                device = device.idup;
-                type = type.idup;
+                this.device = device.idup;
+                this.type = type.idup;
                 applyStatfs(buf);
             }
         }
@@ -479,8 +481,8 @@ private struct VolumeInfoImpl
             valid = GetLastError() == ERROR_NOT_READY;
         } else {
             try {
-                type = fsType[0..wcslen(type.ptr)].toUTF8;
-                label = name[0..wcslen(name.ptr)].toUTF8;
+                this.type = fsType[0..wcslen(fsType.ptr)].toUTF8;
+                this.label = name[0..wcslen(name.ptr)].toUTF8;
             } catch(Exception e) {
             }
 
