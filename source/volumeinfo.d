@@ -44,6 +44,7 @@ private:
     enum MFSNAMELEN = 16;          /* length of type name including null */
     enum MNAMELEN  = 88;          /* size of on/from name bufs */
     enum STATFS_VERSION = 0x20030518;      /* current version number */
+    enum MNT_RDONLY = 1;
 
     struct fsid_t
     {
@@ -84,9 +85,9 @@ private:
     @trusted bool parseStatfs(ref const(statfs_t)* buf, out const(char)[] device, out const(char)[] mountDir, out const(char)[] type) nothrow {
         assert(buf);
         import std.string : fromStringz;
-        auto type = fromStringz(buf.f_fstypename.ptr);
-        auto device = fromStringz(buf.f_mntfromname.ptr);
-        auto mountDir = fromStringz(buf.f_mntonname.ptr);
+        type = fromStringz(buf.f_fstypename.ptr);
+        device = fromStringz(buf.f_mntfromname.ptr);
+        mountDir = fromStringz(buf.f_mntonname.ptr);
         return true;
     }
 }
@@ -251,7 +252,7 @@ body {
 
 private struct VolumeInfoImpl
 {
-    enum Retrieved : ushort {
+    enum Info : ushort {
         Type = 1 << 0,
         Device = 1 << 1,
         Label = 1 << 2,
@@ -270,39 +271,15 @@ private struct VolumeInfoImpl
     }
     version(Posix) @safe this(string mountPoint, string device, string type) nothrow {
         path = mountPoint;
-        _device = device;
-        _type = type;
-        if (device.length)
-            retrieved |= Retrieved.Device;
-        if (type.length)
-            retrieved |= Retrieved.Type;
+        this.device = device;
+        this.type = type;
     }
     version(FreeBSD) @safe this(string mountPoint, string device, string type, const(statfs_t)* buf) nothrow {
-        assert(buf);
         this(mountPoint, device, type);
-        _bytesTotal = buf.f_bsize * buf.f_blocks;
-        _bytesFree = buf.f_bsize * buf.f_bfree;
-        _bytesAvailable = buf.f_bsize * buf.f_bavail;
-        _readOnly = (buf.f_flags & FFlag.ST_RDONLY) != 0;
-        _volumeInfoRetrieved = true;
-    }
-    version(CRuntime_Glibc) {
-        @safe @property string label() nothrow {
-            retrieve(Retrieved.Label);
-            return _label;
-        }
-        string _label;
-    } else version(Windows) {
-        @safe @property string label() nothrow {
-            retrieve(Retrieved.Label);
-            return _label;
-        }
-        string _label;
-    } else {
-        enum label = string.init;
+        applyStatfs(buf);
     }
 
-    BitFlags!Retrieved retrieved;
+    BitFlags!Info retrieved;
     bool _readOnly;
     bool _ready;
     bool _valid;
@@ -310,65 +287,128 @@ private struct VolumeInfoImpl
     string path;
     string _device;
     string _type;
-
-    @safe @property string device() nothrow {
-        return _device;
-    }
-    @safe @property string type() nothrow {
-        retrieve(Retrieved.Type);
-        return _type;
-    }
+    string _label;
 
     long _bytesTotal = -1;
     long _bytesFree = -1;
     long _bytesAvailable = -1;
 
+    @safe @property string device() nothrow {
+        retrieve(Info.Device);
+        return _device;
+    }
+    @safe @property void device(string dev) nothrow {
+        retrieved |= Info.Device;
+        _device = dev;
+    }
+    @safe @property string type() nothrow {
+        retrieve(Info.Type);
+        return _type;
+    }
+    @safe @property void type(string t) nothrow {
+        retrieved |= Info.Type;
+        _type = t;
+    }
+    @safe @property string label() nothrow {
+        retrieve(Info.Label);
+        return _label;
+    }
+    @safe @property void label(string name) nothrow {
+        retrieved |= Info.Label;
+        _label = name;
+    }
+
     @safe @property long bytesTotal() nothrow {
-        retrieve(Retrieved.BytesTotal);
+        retrieve(Info.BytesTotal);
         return _bytesTotal;
     }
+    @safe @property void bytesTotal(long bytes) nothrow {
+        retrieved |= Info.BytesTotal;
+        _bytesTotal = bytes;
+    }
     @safe @property long bytesFree() nothrow {
-        retrieve(Retrieved.BytesFree);
+        retrieve(Info.BytesFree);
         return _bytesFree;
     }
+    @safe @property void bytesFree(long bytes) nothrow {
+        retrieved |= Info.BytesFree;
+        _bytesFree = bytes;
+    }
     @safe @property long bytesAvailable() nothrow {
-        retrieve(Retrieved.BytesAvailable);
+        retrieve(Info.BytesAvailable);
         return _bytesAvailable;
     }
+    @safe @property void bytesAvailable(long bytes) nothrow {
+        retrieved |= Info.BytesAvailable;
+        _bytesAvailable = bytes;
+    }
     @safe @property bool readOnly() nothrow {
-        retrieve(Retrieved.ReadOnly);
+        retrieve(Info.ReadOnly);
         return _readOnly;
     }
-    @safe @property bool isValid() nothrow {
+    @safe @property void readOnly(bool rdOnly) nothrow {
+        retrieved |= Info.ReadOnly;
+        _readOnly = rdOnly;
+    }
+    @safe @property bool valid() nothrow {
         import std.file : exists;
+        retrieve(Info.Valid);
         return path.length && path.exists && _valid;
     }
+    @safe @property bool valid(bool ok) nothrow {
+        retrieved |= Info.Valid;
+        _valid = ok;
+        return ok;
+    }
     @safe @property bool ready() nothrow {
-        retrieve(Retrieved.Ready);
+        retrieve(Info.Ready);
         return path.length && _ready;
     }
+    @safe @property void ready(bool r) nothrow {
+        retrieved |= Info.Ready;
+        _ready = r;
+    }
     @safe void refresh() nothrow {
-        retrieved = BitFlags!Retrieved();
+        retrieved = BitFlags!Info();
     }
 
-    version(Posix) @trusted void retrieveVolumeInfo() nothrow {
-        import std.string : toStringz;
-        import std.exception : assumeWontThrow;
+    version(Posix)
+    {
         import core.sys.posix.sys.statvfs;
+        version(FreeBSD) {
+            alias statfs_t STATFS_T;
+            alias statfs STATFS;
+            alias MNT_RDONLY READONLY_FLAG;
+        } else {
+            alias statvfs_t STATFS_T;
+            alias statvfs STATFS;
+            alias FFlag.ST_RDONLY READONLY_FLAG;
+        }
 
-        statvfs_t buf;
-        if (assumeWontThrow(statvfs(toStringz(path), &buf)) == 0) {
-            version(FreeBSD) {
-                _bytesTotal = buf.f_bsize * buf.f_blocks;
-                _bytesFree = buf.f_bsize * buf.f_bfree;
-                _bytesAvailable = buf.f_bsize * buf.f_bavail;
-            } else {
-                _bytesTotal = buf.f_frsize * buf.f_blocks;
-                _bytesFree = buf.f_frsize * buf.f_bfree;
-                _bytesAvailable = buf.f_frsize * buf.f_bavail;
+        @trusted void retrieveVolumeInfo() nothrow {
+            import std.string : toStringz;
+            import std.exception : assumeWontThrow;
+
+            STATFS_T buf;
+            if (assumeWontThrow(STATFS(toStringz(path), &buf)) == 0) {
+                applyStatfs(&buf);
             }
-            _readOnly = (buf.f_flag & FFlag.ST_RDONLY) != 0;
-            _ready = _valid = true;
+        }
+
+        @safe void applyStatfs(const(STATFS_T)* buf) nothrow {
+            assert(buf);
+            version(FreeBSD) {
+                bytesTotal = buf.f_bsize * buf.f_blocks;
+                bytesFree = buf.f_bsize * buf.f_bfree;
+                bytesAvailable = buf.f_bsize * buf.f_bavail;
+            } else {
+                bytesTotal = buf.f_frsize * buf.f_blocks;
+                bytesFree = buf.f_frsize * buf.f_bfree;
+                bytesAvailable = buf.f_frsize * buf.f_bavail;
+            }
+
+            readOnly = (buf.f_flag & READONLY_FLAG) != 0;
+            ready = valid = true;
         }
     }
 
@@ -382,8 +422,8 @@ private struct VolumeInfoImpl
                     const(char)[] device, mountDir, type;
                     if (parseMountsLine(line, device, mountDir, type)) {
                         if (mountDir == path) {
-                            _device = device.idup;
-                            _type = type.idup;
+                            device = device.idup;
+                            type = type.idup;
                             break;
                         }
                     }
@@ -399,8 +439,8 @@ private struct VolumeInfoImpl
                     const(char)[] device, mountDir, type;
                     parseMntent(ent, device, mountDir, type);
                     if (mountDir == path) {
-                        _device = device.idup;
-                        _type = type.idup;
+                        device = device.idup;
+                        type = type.idup;
                         break;
                     }
                 }
@@ -412,9 +452,10 @@ private struct VolumeInfoImpl
             statfs_t buf;
             if (statfs(toStringz(path), &buf) == 0) {
                 const(char)[] device, mountDir, type;
-                parseStatfs(buf, device, mountDir, type);
-                _device = device.idup;
-                _type = type.idup;
+                parseStatfs(&buf, device, mountDir, type);
+                device = device.idup;
+                type = type.idup;
+                applyStatfs(&buf);
             }
         }
     }
@@ -435,18 +476,18 @@ private struct VolumeInfoImpl
                                                    &flags,
                                                    type.ptr, type.length) != 0;
         if (!result) {
-            _ready = false;
-            _valid = GetLastError() == ERROR_NOT_READY;
+            ready = false;
+            valid = GetLastError() == ERROR_NOT_READY;
         } else {
             try {
-                _type = type[0..wcslen(type.ptr)].toUTF8;
-                _label = name[0..wcslen(name.ptr)].toUTF8;
+                type = type[0..wcslen(type.ptr)].toUTF8;
+                label = name[0..wcslen(name.ptr)].toUTF8;
             } catch(Exception e) {
             }
 
-            _ready = true;
-            _valid = true;
-            _readOnly = (flags & FILE_READ_ONLY_VOLUME) != 0;
+            ready = true;
+            valid = true;
+            readOnly = (flags & FILE_READ_ONLY_VOLUME) != 0;
         }
 
         SetErrorMode(oldmode);
@@ -460,41 +501,35 @@ private struct VolumeInfoImpl
         const(wchar)* wpath;
         if (collectException(path.toUTF16z, wpath) !is null)
             return;
-        _ready = GetDiskFreeSpaceEx(wpath,
-                                     cast(PULARGE_INTEGER)(&_bytesAvailable),
-                                     cast(PULARGE_INTEGER)(&_bytesTotal),
-                                     cast(PULARGE_INTEGER)(&_bytesFree)) != 0;
+        ULARGE_INTEGER bytesA, bytesF, bytesT;
+        ready = GetDiskFreeSpaceEx(wpath, &bytesA, &bytesT, &bytesF) != 0;
+        bytesAvailable = cast(long)bytesA;
+        bytesFree = cast(long)bytesF;
+        bytesTotal = cast(long)bytesT;
 
         SetErrorMode(oldmode);
     }
 
-    @trusted void retrieve(Retrieved requested) nothrow {
-        if ((requested & retrieved) == BitFlags!Retrieved(requested) || !path.length)
+    @trusted void retrieve(Info requested) nothrow {
+        if ((requested & retrieved) == BitFlags!Info(requested) || !path.length)
             return;
-        with(Retrieved)
+        with(Info)
         {
-            bool checkAndSet(BitFlags!Retrieved flagSet) {
-                if (requested & flagSet) {
-                    retrieved |= flagSet;
-                    return true;
-                }
-                return false;
-            }
             version(Windows) {
-                if (checkAndSet(BitFlags!Retrieved() | Ready | Valid | ReadOnly | Label | Type))
+                if (requested & (BitFlags!Info() | Ready | Valid | ReadOnly | Label | Type))
                     retrieveVolumeInfo();
-                if (checkAndSet(BitFlags!Retrieved() | BytesAvailable | BytesFree | BytesTotal))
+                if (requested & (BitFlags!Info() | BytesAvailable | BytesFree | BytesTotal))
                     retrieveSizes();
             }
             version(Posix) {
-                if (checkAndSet(BitFlags!Retrieved() | Ready | Valid | ReadOnly | BytesAvailable | BytesFree | BytesTotal))
+                if (requested & (BitFlags!Info() | Ready | Valid | ReadOnly | BytesAvailable | BytesFree | BytesTotal))
                     retrieveVolumeInfo();
-                if (checkAndSet(BitFlags!Retrieved() | Type | Device))
+                if (requested & (BitFlags!Info() | Type | Device))
                     retrieveDeviceAndType();
             }
             version(CRuntime_Glibc) {
-                if (checkAndSet(BitFlags!Retrieved() | Label))
-                    _label = retrieveLabel(device);
+                if (requested & (BitFlags!Info() | Label))
+                    label = retrieveLabel(device);
             }
         }
     }
@@ -573,7 +608,7 @@ struct VolumeInfo
     }
     /// Whether the object is valid (specified path exists).
     @trusted @property bool isValid() nothrow {
-        return impl.isValid;
+        return impl.valid;
     }
     /// Refresh cached info.
     @trusted void refresh() nothrow {
