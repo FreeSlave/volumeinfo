@@ -82,8 +82,7 @@ private:
         int statfs(const char *path, statfs_t *buf);
     }
 
-    @trusted bool parseStatfs(ref const(statfs_t)* buf, out const(char)[] device, out const(char)[] mountDir, out const(char)[] type) nothrow {
-        assert(buf);
+    @trusted bool parseStatfs(ref const(statfs_t) buf, out const(char)[] device, out const(char)[] mountDir, out const(char)[] type) nothrow {
         import std.string : fromStringz;
         type = fromStringz(buf.f_fstypename.ptr);
         device = fromStringz(buf.f_mntfromname.ptr);
@@ -274,7 +273,7 @@ private struct VolumeInfoImpl
         this.device = device;
         this.type = type;
     }
-    version(FreeBSD) @safe this(string mountPoint, string device, string type, const(statfs_t)* buf) nothrow {
+    version(FreeBSD) @safe this(string mountPoint, string device, string type, ref const(statfs_t) buf) nothrow {
         this(mountPoint, device, type);
         applyStatfs(buf);
     }
@@ -391,23 +390,23 @@ private struct VolumeInfoImpl
 
             STATFS_T buf;
             if (assumeWontThrow(STATFS(toStringz(path), &buf)) == 0) {
-                applyStatfs(&buf);
+                applyStatfs(buf);
             }
         }
 
-        @safe void applyStatfs(const(STATFS_T)* buf) nothrow {
-            assert(buf);
+        @safe void applyStatfs(ref const(STATFS_T) buf) nothrow {
             version(FreeBSD) {
                 bytesTotal = buf.f_bsize * buf.f_blocks;
                 bytesFree = buf.f_bsize * buf.f_bfree;
                 bytesAvailable = buf.f_bsize * buf.f_bavail;
+                readOnly = (buf.f_flags & READONLY_FLAG) != 0;
             } else {
                 bytesTotal = buf.f_frsize * buf.f_blocks;
                 bytesFree = buf.f_frsize * buf.f_bfree;
                 bytesAvailable = buf.f_frsize * buf.f_bavail;
+                readOnly = (buf.f_flag & READONLY_FLAG) != 0;
             }
 
-            readOnly = (buf.f_flag & READONLY_FLAG) != 0;
             ready = valid = true;
         }
     }
@@ -452,10 +451,10 @@ private struct VolumeInfoImpl
             statfs_t buf;
             if (statfs(toStringz(path), &buf) == 0) {
                 const(char)[] device, mountDir, type;
-                parseStatfs(&buf, device, mountDir, type);
+                parseStatfs(buf, device, mountDir, type);
                 device = device.idup;
                 type = type.idup;
-                applyStatfs(&buf);
+                applyStatfs(buf);
             }
         }
     }
@@ -468,19 +467,19 @@ private struct VolumeInfoImpl
         if (collectException(path.toUTF16z, wpath) !is null)
             return;
         wchar[MAX_PATH+1] name;
-        wchar[MAX_PATH+1] type;
+        wchar[MAX_PATH+1] fsType;
         DWORD flags = 0;
         const bool result = GetVolumeInformation(wpath,
                                                    name.ptr, name.length,
                                                    null, null,
                                                    &flags,
-                                                   type.ptr, type.length) != 0;
+                                                   fsType.ptr, fsType.length) != 0;
         if (!result) {
             ready = false;
             valid = GetLastError() == ERROR_NOT_READY;
         } else {
             try {
-                type = type[0..wcslen(type.ptr)].toUTF8;
+                type = fsType[0..wcslen(type.ptr)].toUTF8;
                 label = name[0..wcslen(name.ptr)].toUTF8;
             } catch(Exception e) {
             }
@@ -503,9 +502,9 @@ private struct VolumeInfoImpl
             return;
         ULARGE_INTEGER bytesA, bytesF, bytesT;
         ready = GetDiskFreeSpaceEx(wpath, &bytesA, &bytesT, &bytesF) != 0;
-        bytesAvailable = cast(long)bytesA;
-        bytesFree = cast(long)bytesF;
-        bytesTotal = cast(long)bytesT;
+        bytesAvailable = cast(long)bytesA.QuadPart;
+        bytesFree = cast(long)bytesF.QuadPart;
+        bytesTotal = cast(long)bytesT.QuadPart;
 
         SetErrorMode(oldmode);
     }
@@ -626,6 +625,7 @@ unittest
     VolumeInfo info;
     assert(info.path == "");
     assert(info.type == "");
+    assert(info.device == "");
     assert(info.label == "");
     assert(info.bytesTotal < 0);
     assert(info.bytesAvailable < 0);
