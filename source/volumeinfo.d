@@ -170,6 +170,11 @@ private:
         return string.init;
     }
 
+    unittest
+    {
+        assert(retrieveLabel("cgroup") == string.init);
+    }
+
     @trusted bool parseMntent(ref const mntent ent, out const(char)[] device, out const(char)[] mountDir, out const(char)[] type) nothrow {
         import std.string : fromStringz;
         device = fromStringz(ent.mnt_fsname);
@@ -194,6 +199,15 @@ private:
             }
         }
         return false;
+    }
+
+    unittest
+    {
+        const(char)[] device, mountDir, type;
+        parseMountsLine("/dev/sda2 /media/storage ext4 rw,noexec,relatime,errors=remount-ro,data=ordered 0 0", device, mountDir, type);
+        assert(device == "/dev/sda2");
+        assert(mountDir == "/media/storage");
+        assert(type == "ext4");
     }
 }
 
