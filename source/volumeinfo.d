@@ -292,6 +292,7 @@ private struct VolumeInfoImpl
     version(FreeBSD) @safe this(string mountPoint, string device, string type, ref const(statfs_t) buf) nothrow {
         this(mountPoint, device, type);
         applyStatfs(buf);
+        ready = valid = true;
     }
 
     BitFlags!Info retrieved;
@@ -405,9 +406,10 @@ private struct VolumeInfoImpl
             import std.exception : assumeWontThrow;
 
             STATFS_T buf;
-            if (assumeWontThrow(STATFS(toStringz(path), &buf)) == 0) {
+            const result = assumeWontThrow(STATFS(toStringz(path), &buf)) == 0;
+            ready = valid = result;
+            if (result)
                 applyStatfs(buf);
-            }
         }
 
         @safe void applyStatfs(ref const(STATFS_T) buf) nothrow {
@@ -422,8 +424,6 @@ private struct VolumeInfoImpl
                 bytesAvailable = buf.f_frsize * buf.f_bavail;
                 readOnly = (buf.f_flag & READONLY_FLAG) != 0;
             }
-
-            ready = valid = true;
         }
     }
 
@@ -465,7 +465,9 @@ private struct VolumeInfoImpl
         {
             import std.string : toStringz;
             statfs_t buf;
-            if (statfs(toStringz(path), &buf) == 0) {
+            const result = statfs(toStringz(path), &buf) == 0;
+            ready = valid = result;
+            if (result) {
                 const(char)[] device, mountDir, type;
                 parseStatfs(buf, device, mountDir, type);
                 this.device = device.idup;
@@ -480,8 +482,10 @@ private struct VolumeInfoImpl
 
         import std.exception : collectException;
         const(wchar)* wpath;
-        if (collectException(path.toUTF16z, wpath) !is null)
+        if (collectException(path.toUTF16z, wpath) !is null) {
+            ready = valid = false;
             return;
+        }
         wchar[MAX_PATH+1] name;
         wchar[MAX_PATH+1] fsType;
         DWORD flags = 0;
@@ -670,7 +674,7 @@ VolumeInfo[] mountedVolumes() {
             }
         } catch(Exception e) {
             res.length = 0;
-            res ~= VolumeInfo(VolumeInfoImpl("/", null, null));
+            res ~= VolumeInfo(VolumeInfoImpl("/"));
 
             mntent ent;
             char[1024] buf;
@@ -692,7 +696,7 @@ VolumeInfo[] mountedVolumes() {
     }
     else version(FreeBSD) {
         import std.string : fromStringz;
-        res ~= VolumeInfo(VolumeInfoImpl("/", null, null));
+        res ~= VolumeInfo(VolumeInfoImpl("/"));
 
         statfs_t* mntbufsPtr;
         int mntbufsLen = getmntinfo(&mntbufsPtr, 0);
@@ -711,11 +715,13 @@ VolumeInfo[] mountedVolumes() {
         }
     }
     else version(Posix) {
-        res ~= VolumeInfo(VolumeInfoImpl("/", null, null));
+        res ~= VolumeInfo(VolumeInfoImpl("/"));
     }
 
     version (Windows) {
+        const oldmode = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
         const uint mask = GetLogicalDrives();
+        SetErrorMode(oldmode);
         foreach(int i; 0 .. 26) {
             if (mask & (1 << i)) {
                 const char letter = cast(char)('A' + i);
