@@ -479,6 +479,7 @@ private struct VolumeInfoImpl
 
     version(Windows) @trusted void retrieveVolumeInfo() nothrow {
         const oldmode = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+        scope(exit) SetErrorMode(oldmode);
 
         import std.exception : collectException;
         const(wchar)* wpath;
@@ -508,13 +509,12 @@ private struct VolumeInfoImpl
             valid = true;
             readOnly = (flags & FILE_READ_ONLY_VOLUME) != 0;
         }
-
-        SetErrorMode(oldmode);
     }
 
     version(Windows) @trusted void retrieveSizes() nothrow
     {
         const oldmode = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+        scope(exit) SetErrorMode(oldmode);
 
         import std.exception : collectException;
         const(wchar)* wpath;
@@ -526,7 +526,6 @@ private struct VolumeInfoImpl
         bytesFree = cast(long)bytesF.QuadPart;
         bytesTotal = cast(long)bytesT.QuadPart;
 
-        SetErrorMode(oldmode);
     }
 
     @trusted void retrieve(Info requested) nothrow {
@@ -720,8 +719,8 @@ VolumeInfo[] mountedVolumes() {
 
     version (Windows) {
         const oldmode = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+        scope(exit) SetErrorMode(oldmode);
         const uint mask = GetLogicalDrives();
-        SetErrorMode(oldmode);
         foreach(int i; 0 .. 26) {
             if (mask & (1 << i)) {
                 const char letter = cast(char)('A' + i);
