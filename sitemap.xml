@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<url><loc>http://127.0.0.1/index.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/mountedVolumes.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/VolumeInfo.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/VolumeInfo.bytesAvailable.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/VolumeInfo.bytesFree.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/VolumeInfo.bytesTotal.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/VolumeInfo.device.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/VolumeInfo.isValid.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/VolumeInfo.label.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/VolumeInfo.path.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/VolumeInfo.readOnly.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/VolumeInfo.ready.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/VolumeInfo.refresh.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/VolumeInfo.this.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/VolumeInfo.type.html</loc></url>
+<url><loc>http://127.0.0.1/volumeinfo/volumePath.html</loc></url>
+</urlset>
