@@ -528,6 +528,16 @@ private struct VolumeInfoImpl
 
     }
 
+    version(Windows) @trusted string retrieveGUID() nothrow
+    {
+        import std.exception : collectException;
+        import std.string : toStringz, fromStringz;
+        char[51] guidBuffer;
+        if (GetVolumeNameForVolumeMountPointA(path.toStringz, guidBuffer.ptr, guidBuffer.length))
+            return fromStringz(guidBuffer.ptr).idup;
+        return string.init;
+    }
+
     @trusted void retrieve(Info requested) nothrow {
         if ((requested & retrieved) == BitFlags!Info(requested) || !path.length)
             return;
@@ -538,6 +548,8 @@ private struct VolumeInfoImpl
                     retrieveVolumeInfo();
                 if (requested & (BitFlags!Info() | BytesAvailable | BytesFree | BytesTotal))
                     retrieveSizes();
+                if (requested & (BitFlags!Info() | Device))
+                    device = retrieveGUID();
             }
             version(Posix) {
                 if (requested & (BitFlags!Info() | Ready | Valid | ReadOnly | BytesAvailable | BytesFree | BytesTotal))
@@ -571,7 +583,7 @@ struct VolumeInfo
     @trusted @property string path() nothrow {
         return impl.path;
     }
-    /// Device string, e.g. /dev/sda. Currently implemented only on Linux and FreeBSD.
+    /// Device string, e.g. /dev/sda on Linux and volume guid on Windows.
     @trusted @property string device() nothrow {
         return impl.device;
     }
