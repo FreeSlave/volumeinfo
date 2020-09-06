@@ -669,7 +669,7 @@ unittest
 /**
  * The list of currently mounted volumes.
  */
-VolumeInfo[] mountedVolumes() {
+@trusted VolumeInfo[] mountedVolumes() nothrow {
     version(CRuntime_Glibc) {
         static VolumeInfo[] procSelfMounts()
         {
