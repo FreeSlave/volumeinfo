@@ -20,7 +20,7 @@ version(Windows)
 
 version(OSX) {} else version(Posix)
 {
-    private @safe bool isSpecialFileSystem(const(char)[] dir, const(char)[] type)
+    private @safe bool isSpecialFileSystem(const(char)[] dir, const(char)[] type) nothrow pure
     {
         import std.string : startsWith;
         if (dir.startsWith("/dev") || dir.startsWith("/proc") || dir.startsWith("/sys") ||
@@ -645,7 +645,7 @@ struct VolumeInfo
         return impl.refresh();
     }
 private:
-    this(VolumeInfoImpl impl) {
+    this(VolumeInfoImpl impl) nothrow {
         this.impl = RefCounted!VolumeInfoImpl(impl);
     }
     RefCounted!VolumeInfoImpl impl;
@@ -670,11 +670,12 @@ unittest
  * The list of currently mounted volumes.
  */
 VolumeInfo[] mountedVolumes() {
-    VolumeInfo[] res;
     version(CRuntime_Glibc) {
-        try {
+        static VolumeInfo[] procSelfMounts()
+        {
             import std.stdio : File;
 
+            VolumeInfo[] res;
             foreach(line; File("/proc/self/mounts", "r").byLine) {
                 const(char)[] device, mountDir, type;
                 if (parseMountsLine(line, device, mountDir, type)) {
@@ -683,31 +684,45 @@ VolumeInfo[] mountedVolumes() {
                     }
                 }
             }
-        } catch(Exception e) {
-            res.length = 0;
-            res ~= VolumeInfo(VolumeInfoImpl("/"));
+            return res;
+        }
+
+        static VolumeInfo[] etcMtab() nothrow
+        {
+            VolumeInfo[] res;
 
             mntent ent;
             char[1024] buf;
             FILE* f = setmntent("/etc/mtab", "r");
             if (f is null)
-                return res;
+                return null;
 
             scope(exit) endmntent(f);
             while(getmntent_r(f, &ent, buf.ptr, cast(int)buf.length) !is null) {
                 const(char)[] device, mountDir, type;
                 parseMntent(ent, device, mountDir, type);
 
-                if (mountDir == "/" || isSpecialFileSystem(mountDir, type))
+                if (isSpecialFileSystem(mountDir, type))
                     continue;
 
                 res ~= VolumeInfo(VolumeInfoImpl(mountDir.idup, device.idup, type.idup));
             }
+            return res;
+        }
+
+        try {
+            return procSelfMounts();
+        } catch(Exception e) {
+            auto res = etcMtab();
+            if (res.length)
+                return res;
+            else
+                return [VolumeInfo(VolumeInfoImpl("/"))];
         }
     }
     else version(FreeBSD) {
         import std.string : fromStringz;
-        res ~= VolumeInfo(VolumeInfoImpl("/"));
+        VolumeInfo[] res;
 
         statfs_t* mntbufsPtr;
         int mntbufsLen = getmntinfo(&mntbufsPtr, 0);
@@ -718,18 +733,19 @@ VolumeInfo[] mountedVolumes() {
                 const(char)[] device, mountDir, type;
                 parseStatfs(buf, device, mountDir, type);
 
-                if (mountDir == "/" || isSpecialFileSystem(mountDir, type))
+                if (isSpecialFileSystem(mountDir, type))
                     continue;
 
                 res ~= VolumeInfo(VolumeInfoImpl(mountDir.idup, device.idup, type.idup, buf));
             }
         }
+        return res;
     }
     else version(Posix) {
-        res ~= VolumeInfo(VolumeInfoImpl("/"));
+        return [VolumeInfo(VolumeInfoImpl("/"))];
     }
-
-    version (Windows) {
+    else version (Windows) {
+        VolumeInfo[] res;
         const oldmode = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
         scope(exit) SetErrorMode(oldmode);
         const uint mask = GetLogicalDrives();
@@ -740,6 +756,8 @@ VolumeInfo[] mountedVolumes() {
                 res ~= VolumeInfo(VolumeInfoImpl(path));
             }
         }
+        return res;
     }
-    return res;
+    else
+        return null;
 }
