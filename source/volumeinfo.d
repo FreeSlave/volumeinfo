@@ -209,6 +209,14 @@ private:
         assert(mountDir == "/media/storage");
         assert(type == "ext4");
     }
+
+    auto readProcMounts()
+    {
+        import std.file : read;
+        import std.string : lineSplitter;
+        auto mounts =  cast(char[])read("/proc/self/mounts");
+        return mounts.lineSplitter;
+    }
 }
 
 /**
@@ -432,8 +440,7 @@ private struct VolumeInfoImpl
         {
             // we need to loop through all mountpoints again to find a type by path. Is there a faster way to get file system type?
             try {
-                import std.stdio : File;
-                foreach(line; File("/proc/self/mounts", "r").byLine) {
+                foreach(line; readProcMounts()) {
                     const(char)[] device, mountDir, type;
                     if (parseMountsLine(line, device, mountDir, type)) {
                         if (mountDir == path) {
@@ -673,10 +680,8 @@ unittest
     version(CRuntime_Glibc) {
         static VolumeInfo[] procSelfMounts()
         {
-            import std.stdio : File;
-
             VolumeInfo[] res;
-            foreach(line; File("/proc/self/mounts", "r").byLine) {
+            foreach(line; readProcMounts()) {
                 const(char)[] device, mountDir, type;
                 if (parseMountsLine(line, device, mountDir, type)) {
                     if (!isSpecialFileSystem(mountDir, type)) {
