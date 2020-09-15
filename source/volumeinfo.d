@@ -18,6 +18,11 @@ version(Windows)
     import core.stdc.wchar_ : wcslen;
 }
 
+version(Android) {} else version(linux)
+{
+    version = someNonAndroidLinux;
+}
+
 version(OSX) {} else version(Posix)
 {
     private @safe bool isSpecialFileSystem(const(char)[] dir, const(char)[] type) nothrow pure
@@ -91,7 +96,7 @@ private:
     }
 }
 
-version(CRuntime_Glibc)
+version(someNonAndroidLinux)
 {
 private:
     import core.stdc.stdio : FILE;
@@ -436,7 +441,7 @@ private struct VolumeInfoImpl
     }
 
     version(Posix) @trusted void retrieveDeviceAndType() nothrow {
-        version(CRuntime_Glibc)
+        version(someNonAndroidLinux)
         {
             // we need to loop through all mountpoints again to find a type by path. Is there a faster way to get file system type?
             try {
@@ -564,7 +569,7 @@ private struct VolumeInfoImpl
                 if (requested & (BitFlags!Info() | Type | Device))
                     retrieveDeviceAndType();
             }
-            version(CRuntime_Glibc) {
+            version(someNonAndroidLinux) {
                 if (requested & (BitFlags!Info() | Label))
                     label = retrieveLabel(device);
             }
@@ -677,7 +682,7 @@ unittest
  * The list of currently mounted volumes.
  */
 @trusted VolumeInfo[] mountedVolumes() nothrow {
-    version(CRuntime_Glibc) {
+    version(someNonAndroidLinux) {
         static VolumeInfo[] procSelfMounts()
         {
             VolumeInfo[] res;
