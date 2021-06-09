@@ -25,11 +25,20 @@ version(Android) {} else version(linux)
 
 version(OSX) {} else version(Posix)
 {
+    private @safe bool isSubdirOf(const(char)[] dir, const(char)[] parent) nothrow pure
+    {
+        if (dir.length > parent.length) {
+            import std.string : startsWith;
+            return dir[parent.length] == '/' && dir.startsWith(parent);
+        }
+        return dir == parent;
+    }
+
     private @safe bool isSpecialFileSystem(const(char)[] dir, const(char)[] type) nothrow pure
     {
         import std.string : startsWith;
-        if (dir.startsWith("/dev") || dir.startsWith("/proc") || dir.startsWith("/sys") ||
-            dir.startsWith("/var/run") || dir.startsWith("/var/lock"))
+        if (dir.isSubdirOf("/dev") || dir.isSubdirOf("/proc") || dir.isSubdirOf("/sys") ||
+            dir.isSubdirOf("/var/run") || dir.isSubdirOf("/var/lock"))
         {
             return true;
         }
@@ -38,6 +47,14 @@ version(OSX) {} else version(Posix)
             return true;
         }
         return false;
+    }
+
+    unittest
+    {
+        assert(isSpecialFileSystem("", "tmpfs"));
+        assert(isSpecialFileSystem("/dev", ""));
+        assert(isSpecialFileSystem("/dev/run", ""));
+        assert(!isSpecialFileSystem("/development", ""));
     }
 }
 
