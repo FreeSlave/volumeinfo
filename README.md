@@ -5,7 +5,7 @@ The information includes total and free size, filesystem type and display name.
 
 Inspired by QStorageInfo from Qt.
 
-[![Build Status](https://travis-ci.org/FreeSlave/volumeinfo.svg?branch=master)](https://travis-ci.org/FreeSlave/volumeinfo)
+[![Build Status](https://github.com/FreeSlave/volumeinfo/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/FreeSlave/volumeinfo/actions/workflows/ci.yml)
 [![Windows Build Status](https://ci.appveyor.com/api/projects/status/github/FreeSlave/volumeinfo?branch=master&svg=true)](https://ci.appveyor.com/project/FreeSlave/volumeinfo)
 [![Coverage Status](https://coveralls.io/repos/FreeSlave/volumeinfo/badge.svg?branch=master&service=github)](https://coveralls.io/github/FreeSlave/volumeinfo?branch=master)
 
