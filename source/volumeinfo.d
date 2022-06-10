@@ -251,7 +251,7 @@ out(result) {
         assert(result.isAbsolute);
     }
 }
-body {
+do {
     if (path.length == 0)
         return string.init;
     import std.path : absolutePath;
